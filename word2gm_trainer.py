@@ -316,9 +316,9 @@ class Word2GMtrainer(object):
 
     # the model parameters
     mu_scale = opts.mu_scale*math.sqrt(3.0/(1.0*embedding_size))
-    mus = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures, embedding_size], -mu_scale, mu_scale), name='mu')
+    mus = tf.get_variable('mu', initializer=tf.random_uniform([vocabulary_size, num_mixtures, embedding_size], -mu_scale, mu_scale))
     if opts.wout:
-      mus_out = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures, embedding_size], -mu_scale, mu_scale), name='mu_out')
+      mus_out = tf.get_variable('mu_out', tf.random_uniform([vocabulary_size, num_mixtures, embedding_size], -mu_scale, mu_scale))
     # This intialization makes the variance around 1
     var_scale = opts.var_scale
     logvar_scale = math.log(var_scale)
@@ -326,22 +326,26 @@ class Word2GMtrainer(object):
     var_trainable = 1-self._options.fixvar
     print('var trainable =', var_trainable)
     if spherical:
-      logsigs = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures,1], 
-                                              logvar_scale, logvar_scale), name='sigma', trainable=var_trainable)
+      logsigs = tf.get_variable('sigma',
+                                initializer=tf.random_uniform([vocabulary_size, num_mixtures,1],
+                                                              logvar_scale, logvar_scale), trainable=var_trainable)
       if opts.wout:
-        logsigs_out = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures,1], 
-                                              logvar_scale, logvar_scale), name='sigma_out', trainable=var_trainable)
+        logsigs_out = tf.get_variable('sigma_out',
+                                      initializer=tf.random_uniform([vocabulary_size, num_mixtures,1],
+                                                                    logvar_scale, logvar_scale), trainable=var_trainable)
 
     else:
-      logsigs = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures, embedding_size], 
-                                              logvar_scale, logvar_scale), name='sigma', trainable=var_trainable)
+      logsigs = tf.get_variable('sigma',
+                                initializer=tf.random_uniform([vocabulary_size, num_mixtures, embedding_size],
+                                                              logvar_scale, logvar_scale), trainable=var_trainable)
       if opts.wout:
-        logsigs_out = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures, embedding_size], 
-                                              logvar_scale, logvar_scale), name='sigma_out', trainable=var_trainable)
+        logsigs_out = tf.get_variable('sigma_out',
+                                      initializer=tf.random_uniform([vocabulary_size, num_mixtures, embedding_size],
+                                                                    logvar_scale, logvar_scale), trainable=var_trainable)
 
-    mixture = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures], 0, 0), name='mixture')
+    mixture = tf.get_variable('mixture', initializer=tf.random_uniform([vocabulary_size, num_mixtures], 0, 0))
     if opts.wout:
-      mixture_out = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures], 0, 0), name='mixture_out')
+      mixture_out = tf.get_variable('mixxture_out', initializer=tf.random_uniform([vocabulary_size, num_mixtures], 0, 0))
 
     if not opts.wout:
       mus_out = mus
