@@ -398,7 +398,7 @@ class Word2GMtrainer(object):
         mix_list = []
         for cl1 in xrange(num_mixtures):
           for cl2 in xrange(num_mixtures):
-            if only_bw_modes and cl1 != cl2:
+            if (not only_bw_modes) or cl1 != cl2:
               log_e_list.append(partial_logenergy(cl1, cl2))
               mix_list.append(mix1[:,cl1]*mix2[:,cl2])
         log_e_pack = tf.stack(log_e_list)
