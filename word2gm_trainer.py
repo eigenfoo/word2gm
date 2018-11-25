@@ -607,5 +607,11 @@ def main(_):
                      os.path.join(opts.save_path, "model.ckpt"),
                      global_step=model.global_step)
 
+    with tf.variable_scope('', reuse=tf.AUTO_REUSE):
+      sigmas = session.run(tf.get_variable("sigma"))
+      mus = session.run(tf.get_variable("mu"))
+      np.save("sigma.npy", sigmas)
+      np.save("mu.npy", mus)
+
 if __name__ == "__main__":
   tf.app.run()
