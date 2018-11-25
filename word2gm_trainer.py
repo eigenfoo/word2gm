@@ -48,6 +48,8 @@ flags.DEFINE_integer("concurrent_steps", 12,
 flags.DEFINE_integer("window_size", 5,
                      "The number of words to predict to the left and right "
                      "of the target word.")
+flags.DEFINE_float("regularization_coeff", 0.01,
+                   "Regularization coefficient.")
 flags.DEFINE_integer("min_count", 5,
                      "The minimum number of word occurrences for it to be "
                      "included in the vocabulary.")
@@ -142,6 +144,9 @@ class Options(object):
 
     # The number of words to predict to the left and right of the target word.
     self.window_size = FLAGS.window_size
+
+    # George Ho: Regularization coefficient.
+    self.regularization_coeff = FLAGS.regularization_coeff
 
     # The minimum number of word occurrences for it to be included in the
     # vocabulary.
@@ -295,6 +300,7 @@ class Word2GMtrainer(object):
     vocabulary_size = opts.vocab_size
     embedding_size = opts.emb_dim
     batch_size = opts.batch_size
+    regularization_coeff = opts.regularization_coeff
 
     norm_cap = opts.norm_cap
     lower_sig = opts.lower_sig
@@ -361,8 +367,11 @@ class Word2GMtrainer(object):
         unigrams=opts.vocab_counts.tolist(), name='neg_idxs'))
     self._neg_idxs = neg_idxs
 
-    def log_energy(mu1, sig1, mix1, mu2, sig2, mix2):
+    def log_energy(mu1, sig1, mix1, mu2, sig2, mix2, only_bw_modes=False):
       ### need to pass mix that's compatible!
+      ### George Ho: `only_bw_modes` precludes computing log energies
+      ### between the same mode. For the regularization. Make sure to pass in
+      ### mixes of the same length!
 
       def partial_logenergy(cl1, cl2):
         m1 = mu1[:,cl1,:]
@@ -389,8 +398,9 @@ class Word2GMtrainer(object):
         mix_list = []
         for cl1 in xrange(num_mixtures):
           for cl2 in xrange(num_mixtures):
-            log_e_list.append(partial_logenergy(cl1, cl2))
-            mix_list.append(mix1[:,cl1]*mix2[:,cl2])
+            if only_bw_modes and cl1 != cl2:
+              log_e_list.append(partial_logenergy(cl1, cl2))
+              mix_list.append(mix1[:,cl1]*mix2[:,cl2])
         log_e_pack = tf.stack(log_e_list)
         log_e_max = tf.reduce_max(log_e_list, reduction_indices=0)
 
@@ -419,10 +429,12 @@ class Word2GMtrainer(object):
         mix_word = tf.nn.softmax(tf.nn.embedding_lookup(mixture, word_idxs), name='MixWord')
         mix_pos = tf.nn.softmax(tf.nn.embedding_lookup(mixture_out, pos_idxs), name='MixPos')
         mix_neg = tf.nn.softmax(tf.nn.embedding_lookup(mixture_out, neg_idxs), name='MixNeg')
-        
+
         epos = log_energy(mu_embed, sig_embed, mix_word, mu_embed_pos, sig_embed_pos, mix_pos)
         eneg = log_energy(mu_embed, sig_embed, mix_word, mu_embed_neg, sig_embed_neg, mix_neg)
-        loss_indiv = tf.maximum(zeros_vec, objective_threshold - epos + eneg, name='CalculateIndividualLoss')
+        eself = log_energy(mu_embed, sig_embed, mix_word, mu_embed, sig_embed, mix_word, only_bw_modes=True)
+        loss_indiv = tf.maximum(zeros_vec, objective_threshold - epos + eneg + regularization_coeff * eself,
+                                name='CalculateIndividualLoss')
         loss = tf.reduce_mean(loss_indiv, name='AveLoss')
 
         return loss
