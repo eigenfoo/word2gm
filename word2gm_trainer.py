@@ -438,7 +438,7 @@ class Word2GMtrainer(object):
         epos = log_energy(mu_embed, sig_embed, mix_word, mu_embed_pos, sig_embed_pos, mix_pos)
         eneg = log_energy(mu_embed, sig_embed, mix_word, mu_embed_neg, sig_embed_neg, mix_neg)
         eself = log_energy(mu_embed, sig_embed, mix_word, mu_embed, sig_embed, mix_word, only_bw_modes=True)
-        loss_indiv = tf.maximum(zeros_vec, objective_threshold - epos + eneg + regularization_coeff * eself,
+        loss_indiv = tf.maximum(zeros_vec, objective_threshold - epos + eneg - regularization_coeff * eself,
                                 name='CalculateIndividualLoss')
         loss = tf.reduce_mean(loss_indiv, name='AveLoss')
 
