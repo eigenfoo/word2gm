@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
 import tensorflow as tf
+import pickle
 
 #from tensorflow.models.embedding import gen_word2vec as word2vec
 #word2vec = tf.load_op_library(os.path.join(os.path.di))
@@ -491,6 +492,7 @@ class Word2GMtrainer(object):
     self._id2word = opts.vocab_words
     for i, w in enumerate(self._id2word):
       self._word2id[w] = i
+    pickle.dump(self._word2id, open("word2id.pkl", 'wb'))
     loss = self.calculate_loss(examples, labels)
     self._loss = loss
 
