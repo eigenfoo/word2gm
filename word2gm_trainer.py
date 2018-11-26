@@ -114,7 +114,7 @@ flags.DEFINE_integer("fixvar", 0, "whether to fix the variance or not")
 
 flags.DEFINE_float("thresh", 2.9, "The threshold for norm of covariance to split a distribution")
 
-flags.DEFINE_int("iterations", 3, "The number of epochs before checkign to split")
+flags.DEFINE_integer("iterations", 3, "The number of epochs before checkign to split")
 
 FLAGS = flags.FLAGS
 
