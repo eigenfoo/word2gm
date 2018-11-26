@@ -49,7 +49,7 @@ flags.DEFINE_integer("concurrent_steps", 12,
 flags.DEFINE_integer("window_size", 5,
                      "The number of words to predict to the left and right "
                      "of the target word.")
-flags.DEFINE_float("regularization_coeff", 0.01,
+flags.DEFINE_float("regularization_coeff", 0.1,
                    "Regularization coefficient.")
 flags.DEFINE_integer("min_count", 5,
                      "The minimum number of word occurrences for it to be "
@@ -438,16 +438,19 @@ class Word2GMtrainer(object):
         epos = log_energy(mu_embed, sig_embed, mix_word, mu_embed_pos, sig_embed_pos, mix_pos)
         eneg = log_energy(mu_embed, sig_embed, mix_word, mu_embed_neg, sig_embed_neg, mix_neg)
         eself = log_energy(mu_embed, sig_embed, mix_word, mu_embed, sig_embed, mix_word, only_bw_modes=True)
-        loss_indiv = tf.maximum(zeros_vec, objective_threshold - epos + eneg - regularization_coeff * eself,
+        loss_indiv = tf.maximum(zeros_vec, objective_threshold - epos + eneg,
                                 name='CalculateIndividualLoss')
+        reg_indiv = regularization_coeff * eself
         loss = tf.reduce_mean(loss_indiv, name='AveLoss')
+        reg = tf.reduce_mean(reg_indiv, name='AveReg')
 
-        return loss
+        return loss - reg, loss, reg
 
-    loss = Lfunc(word_idxs, pos_idxs, neg_idxs)
+    loss_reg, loss, reg = Lfunc(word_idxs, pos_idxs, neg_idxs)
     tf.summary.scalar('loss', loss)
+    tf.summary.scalar('reg', reg)
 
-    return loss
+    return loss_reg
 
   def clip_ops_graph(self, word_idxs, pos_idxs, neg_idxs):
     def clip_val_ref(embedding, idxs):
@@ -559,7 +562,7 @@ class Word2GMtrainer(object):
       now = time.time()
       last_words, last_time, rate = words, now, (words - last_words) / (
           now - last_time)
-      print("Epoch %4d Step %8d: lr = %5.3f loss = %6.2f words/sec = %8.0f\r" %
+      print("Epoch %4d Step %8d: lr = %5.3f loss = %6.2f words/sec = %8.0f" %
             (epoch, step, lr, loss, rate), end="")
       sys.stdout.flush()
       if now - last_summary_time > opts.summary_interval:
