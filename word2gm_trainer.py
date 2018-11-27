@@ -444,7 +444,7 @@ class Word2GMtrainer(object):
         loss = tf.reduce_mean(loss_indiv, name='AveLoss')
         reg = tf.reduce_mean(reg_indiv, name='AveReg')
 
-        return loss - reg, loss, reg
+        return loss + tf.exp(-reg), loss, reg
 
     loss_reg, loss, reg = Lfunc(word_idxs, pos_idxs, neg_idxs)
     tf.summary.scalar('loss', loss)
@@ -562,7 +562,7 @@ class Word2GMtrainer(object):
       now = time.time()
       last_words, last_time, rate = words, now, (words - last_words) / (
           now - last_time)
-      print("Epoch %4d Step %8d: lr = %5.3f loss = %6.2f words/sec = %8.0f" %
+      print("Epoch %4d Step %8d: lr = %5.3f loss = %6.2f words/sec = %8.0f\n" %
             (epoch, step, lr, loss, rate), end="")
       sys.stdout.flush()
       if now - last_summary_time > opts.summary_interval:
