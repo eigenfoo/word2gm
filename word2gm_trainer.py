@@ -244,9 +244,9 @@ class Word2GMtrainer(object):
     self._session = session
     self._word2id = {}
     self._id2word = []
-    self.total_size =total_size
     self.build_graph() #
     self.save_vocab()
+    self.total_size =total_size if total_size>0 else opts.vocab_size
 
   def _build_mixture_matrix(self,mixture_dictionary):
       mixture_matrix = np.zeros([self._options.vocab_size, self.num_mixtures_max])
@@ -655,7 +655,7 @@ def main(_):
   print('Saving results to {}'.format(opts.save_path))
   with tf.device("/cpu:0"):
     session = tf.Session()
-    model = Word2GMtrainer(opts, session,mixture_dictionary,opts.vocab_size)
+    model = Word2GMtrainer(opts, session,mixture_dictionary,0)
   for i in xrange(1,opts.epochs_to_train+1):
     if i % opts.iterations != 0:
      _,mixture_dictionary = model.train()
