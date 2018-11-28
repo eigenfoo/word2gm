@@ -112,7 +112,7 @@ flags.DEFINE_string("rep", "gm", 'The type of representation. Either gm or vec')
 
 flags.DEFINE_integer("fixvar", 0, "whether to fix the variance or not")
 
-flags.DEFINE_float("thresh", 2.9, "The threshold for norm of covariance to split a distribution")
+flags.DEFINE_float("thresh", 2.83, "The threshold for norm of covariance to split a distribution")
 
 flags.DEFINE_integer("iterations", 3, "The number of epochs before checkign to split")
 
@@ -620,14 +620,19 @@ def split_decider(thresh,mixture_dictionary,session):
     for word_id in mixture_dictionary:
         mixtures = mixture_dictionary[word_id]
         tmp = mixtures[:]
+        seen= set()
         for mixture in mixtures:
-            sigma = sigmas[mixture,:]
-            sigma_norm = np.linalg.norm(sigma)
-            if sigma_norm> thresh:
-                tmp.append(word_count)
-                word_count+=1
-                if len(tmp)>num_mixtures_max:
-                    num_mixtures_max= len(tmp)
+            if mixture in seen:
+                pass
+            else:
+                sigma = sigmas[mixture,:]
+                sigma_norm = np.linalg.norm(sigma)
+                if sigma_norm> thresh:
+                    tmp.append(word_count)
+                    word_count+=1
+                    if len(tmp)>num_mixtures_max:
+                        num_mixtures_max= len(tmp)
+                seen.add(mixture)
         mixture_dictionary[word_id] = tmp
     for word_id in mixture_dictionary:
         mixtures = mixture_dictionary[word_id]
@@ -658,13 +663,13 @@ def main(_):
     if i % opts.iterations != 0:
      _,mixture_dictionary = model.train()
     else:
+         _,mixture_dictionary = model.train()
          num_mixtures_max = split_decider(opts.thresh,mixture_dictionary,session)
          tf.reset_default_graph()
          session = tf.Session()
          model = Word2GMtrainer(opts,session,mixture_dictionary,num_mixtures_max)
-         _,mixture_dictionary = model.train()
         # Perform a final save.
-
+  _,mixture_dictionary = model.train()
   model.saver.save(session,
                    os.path.join(opts.save_path, "model.ckpt"),
                    global_step=model.global_step)
