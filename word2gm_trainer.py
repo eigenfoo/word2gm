@@ -220,7 +220,7 @@ class Options(object):
 
 class Word2GMtrainer(object):
 
-  def __init__(self, options, session, mixture_dictionary,num_mixtures_max):
+  def __init__(self, options, session, mixture_dictionary,total_size):
     self._options = options
     # Ben A: print important opts
     opts = options
@@ -244,8 +244,7 @@ class Word2GMtrainer(object):
     self._session = session
     self._word2id = {}
     self._id2word = []
-    self.num_mixtures_max = num_mixtures_max
-    self.mixture_dictionary = mixture_dictionary
+    self.total_size =total_size
     self.build_graph() #
     self.save_vocab()
 
@@ -339,10 +338,9 @@ class Word2GMtrainer(object):
 
     # the model parameters
     mu_scale = opts.mu_scale*math.sqrt(3.0/(1.0*embedding_size))
-    total_size = vocabulary_size *self.num_mixtures_max + 1
-    mus = tf.get_variable('mu', initializer=tf.random_uniform([total_size, embedding_size], -mu_scale, mu_scale))
+    mus = tf.get_variable('mu', initializer=tf.random_uniform([self.total_size, embedding_size], -mu_scale, mu_scale))
     if opts.wout:
-      mus_out = tf.get_variable('mu_out', initializer=tf.random_uniform([total_size, embedding_size], -mu_scale, mu_scale))
+      mus_out = tf.get_variable('mu_out', initializer=tf.random_uniform([self.total_size, embedding_size], -mu_scale, mu_scale))
     # This intialization makes the variance around 1
     var_scale = opts.var_scale
     logvar_scale = math.log(var_scale)
@@ -612,7 +610,6 @@ def _start_shell(local_ns=None):
   IPython.start_ipython(argv=[], user_ns=user_ns)
 
 def split_decider(thresh,mixture_dictionary,session):
-    total_words = 0
     num_mixtures_max = 1
     with tf.variable_scope('', reuse=tf.AUTO_REUSE):
         sigmas = session.run(tf.get_variable("sigma"))
@@ -642,7 +639,7 @@ def split_decider(thresh,mixture_dictionary,session):
             for choice in additional_choices:
                 mixtures.append(mixtures[choice])
             mixture_dictionary[word_id] = mixtures
-    return num_mixtures_max
+    return word_count
 
 def main(_):
   mixture_dictionary = {}
@@ -658,16 +655,16 @@ def main(_):
   print('Saving results to {}'.format(opts.save_path))
   with tf.device("/cpu:0"):
     session = tf.Session()
-    model = Word2GMtrainer(opts, session,mixture_dictionary,1)
+    model = Word2GMtrainer(opts, session,mixture_dictionary,opts.vocab_size)
   for i in xrange(1,opts.epochs_to_train+1):
     if i % opts.iterations != 0:
      _,mixture_dictionary = model.train()
     else:
          _,mixture_dictionary = model.train()
-         num_mixtures_max = split_decider(opts.thresh,mixture_dictionary,session)
+         total_size = split_decider(opts.thresh,mixture_dictionary,session)
          tf.reset_default_graph()
          session = tf.Session()
-         model = Word2GMtrainer(opts,session,mixture_dictionary,num_mixtures_max)
+         model = Word2GMtrainer(opts,session,mixture_dictionary,total_size)
         # Perform a final save.
   _,mixture_dictionary = model.train()
   model.saver.save(session,
