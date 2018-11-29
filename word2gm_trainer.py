@@ -323,7 +323,7 @@ class Word2GMtrainer(object):
     #####################################################
     # the model parameters
     vocabulary_size = opts.vocab_size
-    self.total_size = self.total_size if total_size>0 else opts.vocab_size
+    self.total_size = self.total_size if self.total_size>0 else opts.vocab_size
     embedding_size = opts.emb_dim
     batch_size = opts.batch_size
 
