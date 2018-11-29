@@ -220,7 +220,7 @@ class Options(object):
 
 class Word2GMtrainer(object):
 
-  def __init__(self, options, session, mixture_dictionary,total_size):
+  def __init__(self, options, session, mixture_dictionary,total_size,num_mixtures_max):
     self._options = options
     # Ben A: print important opts
     opts = options
@@ -244,9 +244,11 @@ class Word2GMtrainer(object):
     self._session = session
     self._word2id = {}
     self._id2word = []
+    self.num_mixtures_max = num_mixtures_max
+    self.mixture_dictionary = {}
+    self.total_size =total_size
     self.build_graph() #
     self.save_vocab()
-    self.total_size =total_size if total_size>0 else opts.vocab_size
 
   def _build_mixture_matrix(self,mixture_dictionary):
       mixture_matrix = np.zeros([self._options.vocab_size, self.num_mixtures_max])
@@ -321,6 +323,7 @@ class Word2GMtrainer(object):
     #####################################################
     # the model parameters
     vocabulary_size = opts.vocab_size
+    self.total_size = self.total_size if self.total_size>0 else opts.vocab_size
     embedding_size = opts.emb_dim
     batch_size = opts.batch_size
 
@@ -348,22 +351,22 @@ class Word2GMtrainer(object):
     var_trainable = 1-self._options.fixvar
     print('var trainable =', var_trainable)
     if spherical:
-      logsigs = tf.get_variable('sigma', initializer= tf.random_uniform([total_size,1],
+      logsigs = tf.get_variable('sigma', initializer= tf.random_uniform([self.total_size,1],
                                               logvar_scale, logvar_scale), trainable=var_trainable)
       if opts.wout:
-        logsigs_out = tf.get_variable('sigma_out', initializer=tf.random_uniform([total_size,1],
+        logsigs_out = tf.get_variable('sigma_out', initializer=tf.random_uniform([self.total_size,1],
                                               logvar_scale, logvar_scale), trainable=var_trainable)
 
     else:
-      logsigs = tf.get_variable('sigma', initializer=tf.random_uniform([total_size, embedding_size],
+      logsigs = tf.get_variable('sigma', initializer=tf.random_uniform([self.total_size, embedding_size],
                                               logvar_scale, logvar_scale), trainable=var_trainable)
       if opts.wout:
-        logsigs_out = tf.get_variable('sigma_out', initializer=tf.random_uniform([total_size, embedding_size],
+        logsigs_out = tf.get_variable('sigma_out', initializer=tf.random_uniform([self.total_size, embedding_size],
                                               logvar_scale, logvar_scale), trainable=var_trainable)
 
-    mixture = tf.get_variable('mizture', initializer=tf.random_uniform([total_size], 0, 0))
+    mixture = tf.get_variable('mizture', initializer=tf.random_uniform([self.total_size], 0, 0))
     if opts.wout:
-      mixture_out = tf.get_variable('mixture_out', initializer=tf.random_uniform([total_size], 0, 0))
+      mixture_out = tf.get_variable('mixture_out', initializer=tf.random_uniform([self.total_size], 0, 0))
 
     if not opts.wout:
       mus_out = mus
@@ -507,7 +510,7 @@ class Word2GMtrainer(object):
     self._examples = examples
     self._labels = labels
     self._id2word = opts.vocab_words
-    temp = False if self.mixture_dictionary else True
+    temp = False if len(self.mixture_dictionary)!=0 else True
     for i, w in enumerate(self._id2word):
       self._word2id[w] = i
       if temp:
@@ -639,7 +642,7 @@ def split_decider(thresh,mixture_dictionary,session):
             for choice in additional_choices:
                 mixtures.append(mixtures[choice])
             mixture_dictionary[word_id] = mixtures
-    return word_count
+    return word_count, num_mixtures_max
 
 def main(_):
   mixture_dictionary = {}
@@ -655,16 +658,16 @@ def main(_):
   print('Saving results to {}'.format(opts.save_path))
   with tf.device("/cpu:0"):
     session = tf.Session()
-    model = Word2GMtrainer(opts, session,mixture_dictionary,0)
+    model = Word2GMtrainer(opts, session,mixture_dictionary,0,1)
   for i in xrange(1,opts.epochs_to_train+1):
     if i % opts.iterations != 0:
      _,mixture_dictionary = model.train()
     else:
          _,mixture_dictionary = model.train()
-         total_size = split_decider(opts.thresh,mixture_dictionary,session)
+         total_size,num_mixtures_max = split_decider(opts.thresh,mixture_dictionary,session)
          tf.reset_default_graph()
          session = tf.Session()
-         model = Word2GMtrainer(opts,session,mixture_dictionary,total_size)
+         model = Word2GMtrainer(opts,session,mixture_dictionary,total_size,num_mixtures_max)
         # Perform a final save.
   _,mixture_dictionary = model.train()
   model.saver.save(session,
