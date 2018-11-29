@@ -112,7 +112,7 @@ flags.DEFINE_string("rep", "gm", 'The type of representation. Either gm or vec')
 
 flags.DEFINE_integer("fixvar", 0, "whether to fix the variance or not")
 
-flags.DEFINE_float("thresh", 2.83, "The threshold for norm of covariance to split a distribution")
+flags.DEFINE_float("thresh", 2.77, "The threshold for norm of covariance to split a distribution")
 
 flags.DEFINE_integer("iterations", 3, "The number of epochs before checkign to split")
 
@@ -245,7 +245,7 @@ class Word2GMtrainer(object):
     self._word2id = {}
     self._id2word = []
     self.num_mixtures_max = num_mixtures_max
-    self.mixture_dictionary = {}
+    self.mixture_dictionary = mixture_dictionary
     self.total_size =total_size
     self.build_graph() #
     self.save_vocab()
@@ -323,7 +323,7 @@ class Word2GMtrainer(object):
     #####################################################
     # the model parameters
     vocabulary_size = opts.vocab_size
-    self.total_size = self.total_size if self.total_size>0 else opts.vocab_size
+    self.total_size = self.total_size if total_size>0 else opts.vocab_size
     embedding_size = opts.emb_dim
     batch_size = opts.batch_size
 
