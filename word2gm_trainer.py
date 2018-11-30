@@ -49,7 +49,7 @@ flags.DEFINE_integer("concurrent_steps", 12,
 flags.DEFINE_integer("window_size", 5,
                      "The number of words to predict to the left and right "
                      "of the target word.")
-flags.DEFINE_float("regularization_coeff", 0.1,
+flags.DEFINE_float("regularization_coeff", 0.005,
                    "Regularization coefficient.")
 flags.DEFINE_integer("min_count", 5,
                      "The minimum number of word occurrences for it to be "
