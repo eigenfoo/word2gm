@@ -23,7 +23,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
 import tensorflow as tf
-import pickle
 
 #from tensorflow.models.embedding import gen_word2vec as word2vec
 #word2vec = tf.load_op_library(os.path.join(os.path.di))
@@ -111,10 +110,6 @@ flags.DEFINE_boolean("normclip", False,
 flags.DEFINE_string("rep", "gm", 'The type of representation. Either gm or vec')
 
 flags.DEFINE_integer("fixvar", 0, "whether to fix the variance or not")
-
-flags.DEFINE_float("thresh", 2.77, "The threshold for norm of covariance to split a distribution")
-
-flags.DEFINE_integer("iterations", 3, "The number of epochs before checkign to split")
 
 FLAGS = flags.FLAGS
 
@@ -215,12 +210,9 @@ class Options(object):
 
     self.fixvar = FLAGS.fixvar
 
-    self.thresh = FLAGS.thresh
-    self.iterations =  FLAGS.iterations
-
 class Word2GMtrainer(object):
 
-  def __init__(self, options, session, mixture_dictionary,total_size,num_mixtures_max):
+  def __init__(self, options, session):
     self._options = options
     # Ben A: print important opts
     opts = options
@@ -244,30 +236,8 @@ class Word2GMtrainer(object):
     self._session = session
     self._word2id = {}
     self._id2word = []
-    self.num_mixtures_max = num_mixtures_max
-    self.mixture_dictionary = mixture_dictionary
-    self.total_size =total_size
     self.build_graph() #
     self.save_vocab()
-
-  def _build_mixture_matrix(self,mixture_dictionary):
-      mixture_matrix = np.zeros([self._options.vocab_size, self.num_mixtures_max])
-      for i in mixture_dictionary:
-          mixture_matrix[i,:] = mixture_dictionary[i]
-      return tf.convert_to_tensor(mixture_matrix, dtype=tf.int32)
-
-  def _embedding_lookup(self,embedding_matrix,ids,embedding_name=""):
-      elements = []
-      for i in range(self._options.batch_size):
-          _id = ids[i]
-          mixtures = tf.nn.embedding_lookup(self._mixture_matrix,_id)
-          if embedding_name:
-             t = tf.nn.embedding_lookup(embedding_matrix, mixtures, name=embedding_name)
-             elements.append(t)
-          else:
-            elements.append(tf.nn.embedding_lookup(embedding_matrix, mixtures))
-      tensor_var = tf.stack(elements)
-      return tensor_var
 
   def optimize(self, loss):
     """Build the graph to optimize the loss function."""
@@ -317,13 +287,12 @@ class Word2GMtrainer(object):
 
 
   def calculate_loss(self, word_idxs, pos_idxs):
-    # This is two methods in one (forward and nce_loss
+    # This is two methods in one (forward and nce_loss)
     self.global_step = tf.Variable(0, name="global_step")
     opts = self._options
     #####################################################
     # the model parameters
     vocabulary_size = opts.vocab_size
-    self.total_size = self.total_size if self.total_size>0 else opts.vocab_size
     embedding_size = opts.emb_dim
     batch_size = opts.batch_size
 
@@ -341,9 +310,9 @@ class Word2GMtrainer(object):
 
     # the model parameters
     mu_scale = opts.mu_scale*math.sqrt(3.0/(1.0*embedding_size))
-    mus = tf.get_variable('mu', initializer=tf.random_uniform([self.total_size, embedding_size], -mu_scale, mu_scale))
+    mus = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures, embedding_size], -mu_scale, mu_scale), name='mu')
     if opts.wout:
-      mus_out = tf.get_variable('mu_out', initializer=tf.random_uniform([self.total_size, embedding_size], -mu_scale, mu_scale))
+      mus_out = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures, embedding_size], -mu_scale, mu_scale), name='mu_out')
     # This intialization makes the variance around 1
     var_scale = opts.var_scale
     logvar_scale = math.log(var_scale)
@@ -351,22 +320,22 @@ class Word2GMtrainer(object):
     var_trainable = 1-self._options.fixvar
     print('var trainable =', var_trainable)
     if spherical:
-      logsigs = tf.get_variable('sigma', initializer= tf.random_uniform([self.total_size,1],
-                                              logvar_scale, logvar_scale), trainable=var_trainable)
+      logsigs = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures,1],
+                                              logvar_scale, logvar_scale), name='sigma', trainable=var_trainable)
       if opts.wout:
-        logsigs_out = tf.get_variable('sigma_out', initializer=tf.random_uniform([self.total_size,1],
-                                              logvar_scale, logvar_scale), trainable=var_trainable)
+        logsigs_out = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures,1],
+                                              logvar_scale, logvar_scale), name='sigma_out', trainable=var_trainable)
 
     else:
-      logsigs = tf.get_variable('sigma', initializer=tf.random_uniform([self.total_size, embedding_size],
-                                              logvar_scale, logvar_scale), trainable=var_trainable)
+      logsigs = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures, embedding_size],
+                                              logvar_scale, logvar_scale), name='sigma', trainable=var_trainable)
       if opts.wout:
-        logsigs_out = tf.get_variable('sigma_out', initializer=tf.random_uniform([self.total_size, embedding_size],
-                                              logvar_scale, logvar_scale), trainable=var_trainable)
+        logsigs_out = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures, embedding_size],
+                                              logvar_scale, logvar_scale), name='sigma_out', trainable=var_trainable)
 
-    mixture = tf.get_variable('mizture', initializer=tf.random_uniform([self.total_size], 0, 0))
+    mixture = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures], 0, 0), name='mixture')
     if opts.wout:
-      mixture_out = tf.get_variable('mixture_out', initializer=tf.random_uniform([self.total_size], 0, 0))
+      mixture_out = tf.Variable(tf.random_uniform([vocabulary_size, num_mixtures], 0, 0), name='mixture_out')
 
     if not opts.wout:
       mus_out = mus
@@ -418,8 +387,8 @@ class Word2GMtrainer(object):
       with tf.name_scope('logenergy') as scope:
         log_e_list = []
         mix_list = []
-        for cl1 in xrange(self.num_mixtures_max):
-          for cl2 in xrange(self.num_mixtures_max):
+        for cl1 in xrange(num_mixtures):
+          for cl2 in xrange(num_mixtures):
             log_e_list.append(partial_logenergy(cl1, cl2))
             mix_list.append(mix1[:,cl1]*mix2[:,cl2])
         log_e_pack = tf.stack(log_e_list)
@@ -440,22 +409,16 @@ class Word2GMtrainer(object):
 
     def Lfunc(word_idxs, pos_idxs, neg_idxs):
       with tf.name_scope('LossCal') as scope:
+        mu_embed = tf.nn.embedding_lookup(mus, word_idxs, name='MuWord')
+        mu_embed_pos = tf.nn.embedding_lookup(mus_out, pos_idxs, name='MuPos')
+        mu_embed_neg = tf.nn.embedding_lookup(mus_out, neg_idxs, name='MuNeg')
+        sig_embed = tf.exp(tf.nn.embedding_lookup(logsigs, word_idxs), name='SigWord')
+        sig_embed_pos = tf.exp(tf.nn.embedding_lookup(logsigs_out, pos_idxs), name='SigPos')
+        sig_embed_neg = tf.exp(tf.nn.embedding_lookup(logsigs_out, neg_idxs), name='SigNeg')
 
-
-        mu_embed = self._embedding_lookup(mus, word_idxs, "MuWord")
-        mu_embed_pos = self._embedding_lookup(mus_out, pos_idxs, "MuPos")
-        mu_embed_neg = self._embedding_lookup(mus_out, neg_idxs, "MuNeg")
-
-
-
-        sig_embed= tf.exp(self._embedding_lookup(logsigs, word_idxs), name='SigWord')
-        sig_embed_pos = tf.exp(self._embedding_lookup(logsigs_out, pos_idxs), name='SigPos')
-        sig_embed_neg = tf.exp(self._embedding_lookup(logsigs_out, neg_idxs), name='SigNeg')
-
-
-        mix_word = tf.nn.softmax(self._embedding_lookup(mixture, word_idxs), name='MixWord')
-        mix_pos = tf.nn.softmax(self._embedding_lookup(mixture_out, pos_idxs), name='MixPos')
-        mix_neg = tf.nn.softmax(self._embedding_lookup(mixture_out, neg_idxs), name='MixNeg')
+        mix_word = tf.nn.softmax(tf.nn.embedding_lookup(mixture, word_idxs), name='MixWord')
+        mix_pos = tf.nn.softmax(tf.nn.embedding_lookup(mixture_out, pos_idxs), name='MixPos')
+        mix_neg = tf.nn.softmax(tf.nn.embedding_lookup(mixture_out, neg_idxs), name='MixNeg')
 
         epos = log_energy(mu_embed, sig_embed, mix_word, mu_embed_pos, sig_embed_pos, mix_pos)
         eneg = log_energy(mu_embed, sig_embed, mix_word, mu_embed_neg, sig_embed_neg, mix_neg)
@@ -494,7 +457,7 @@ class Word2GMtrainer(object):
   def build_graph(self):
     """Build the graph for the full model."""
     opts = self._options
-        # The training data. A text file.
+    # The training data. A text file.
     (words, counts, words_per_epoch, self._epoch, self._words, examples,
      labels) = word2vec.skipgram_word2vec(filename=opts.train_data,
                                  batch_size=opts.batch_size,
@@ -510,16 +473,11 @@ class Word2GMtrainer(object):
     self._examples = examples
     self._labels = labels
     self._id2word = opts.vocab_words
-    temp = False if len(self.mixture_dictionary)!=0 else True
     for i, w in enumerate(self._id2word):
       self._word2id[w] = i
-      if temp:
-        self.mixture_dictionary[i] = [i]
-    if temp:
-        pickle.dump(self._word2id, open("word2id.pkl", 'wb'))
-    self._mixture_matrix = self._build_mixture_matrix(self.mixture_dictionary)
     loss = self.calculate_loss(examples, labels)
     self._loss = loss
+
     if opts.normclip:
       self._clip_ops = self.clip_ops_graph(self._examples, self._labels, self._neg_idxs)
 
@@ -532,7 +490,7 @@ class Word2GMtrainer(object):
     # Properly initialize all variables.
     self.check_op = tf.add_check_numerics_ops()
 
-    tf.initialize_all_variables().run(session=self._session )
+    tf.initialize_all_variables().run()
 
     try:
       print('Try using saver version v2')
@@ -601,7 +559,7 @@ class Word2GMtrainer(object):
 
     for t in workers:
       t.join()
-    return epoch, self.mixture_dictionary
+    return epoch
 
 def _start_shell(local_ns=None):
   # An interactive shell is useful for debugging/development.
@@ -612,40 +570,7 @@ def _start_shell(local_ns=None):
   user_ns.update(globals())
   IPython.start_ipython(argv=[], user_ns=user_ns)
 
-def split_decider(thresh,mixture_dictionary,session):
-    num_mixtures_max = 1
-    with tf.variable_scope('', reuse=tf.AUTO_REUSE):
-        sigmas = session.run(tf.get_variable("sigma"))
-    word_count = sigmas.shape[0]
-    for word_id in mixture_dictionary:
-        mixtures = mixture_dictionary[word_id]
-        tmp = mixtures[:]
-        seen= set()
-        for mixture in mixtures:
-            if mixture in seen:
-                pass
-            else:
-                sigma = sigmas[mixture,:]
-                sigma_norm = np.linalg.norm(sigma)
-                if sigma_norm> thresh:
-                    tmp.append(word_count)
-                    word_count+=1
-                    if len(tmp)>num_mixtures_max:
-                        num_mixtures_max= len(tmp)
-                seen.add(mixture)
-        mixture_dictionary[word_id] = tmp
-    for word_id in mixture_dictionary:
-        mixtures = mixture_dictionary[word_id]
-        if len(mixtures)<num_mixtures_max:
-            additional_num = num_mixtures_max - len(mixtures)
-            additional_choices = np.random.choice(len(mixtures), additional_num)
-            for choice in additional_choices:
-                mixtures.append(mixtures[choice])
-            mixture_dictionary[word_id] = mixtures
-    return word_count, num_mixtures_max
-
 def main(_):
-  mixture_dictionary = {}
   if not FLAGS.train_data or not FLAGS.save_path:
     print("--train_data and --save_path must be specified.")
     sys.exit(1)
@@ -656,28 +581,15 @@ def main(_):
     print('The directory already exists', FLAGS.save_path)
   opts = Options()
   print('Saving results to {}'.format(opts.save_path))
-  with tf.device("/cpu:0"):
-    session = tf.Session()
-    model = Word2GMtrainer(opts, session,mixture_dictionary,0,1)
-  for i in xrange(1,opts.epochs_to_train+1):
-    if i % opts.iterations != 0:
-     _,mixture_dictionary = model.train()
-    else:
-         _,mixture_dictionary = model.train()
-         total_size,num_mixtures_max = split_decider(opts.thresh,mixture_dictionary,session)
-         tf.reset_default_graph()
-         session = tf.Session()
-         model = Word2GMtrainer(opts,session,mixture_dictionary,total_size,num_mixtures_max)
-        # Perform a final save.
-  _,mixture_dictionary = model.train()
-  model.saver.save(session,
-                   os.path.join(opts.save_path, "model.ckpt"),
-                   global_step=model.global_step)
-  with tf.variable_scope('', reuse=tf.AUTO_REUSE):
-      sigmas = session.run(tf.get_variable("sigma"))
-      mus = session.run(tf.get_variable("mu"))
-      np.save("sigma.npy",sigmas)
-      np.save("mu.npy", mus)
-  pickle.dump(mixture_dictionary, open("mixture.pkl", "wb"))
+  with tf.Graph().as_default(), tf.Session() as session:
+    with tf.device("/cpu:0"):
+      model = Word2GMtrainer(opts, session)
+    for _ in xrange(opts.epochs_to_train):
+      model.train()
+    # Perform a final save.
+    model.saver.save(session,
+                     os.path.join(opts.save_path, "model.ckpt"),
+                     global_step=model.global_step)
+
 if __name__ == "__main__":
   tf.app.run()
