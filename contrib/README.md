@@ -1,0 +1,1 @@
+# Variatic and Regularized Embeddings
